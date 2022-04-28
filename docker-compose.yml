@@ -1,0 +1,91 @@
+version: "3.5"
+services:
+
+    node_1:
+        image: nethermind/nethermind:alpine
+        command: --config config
+        container_name: 'node_1'
+        volumes:
+            - ./genesis:/config/genesis
+            - ./node_1/configs/config.cfg:/nethermind/configs/config.cfg
+            - ./static-nodes.json:/nethermind/Data/static-nodes.json
+            - ./node_1/db/aura:/nethermind/nethermind_db/aura
+            - ./node_1/keystore:/nethermind/keystore
+        ports:
+            - 8545:8545
+            - 8547:8547
+        networks:
+            vpcbr:
+                ipv4_address: 11.5.0.2
+
+    db:
+        image: postgres:13.6
+        restart: always
+        container_name: 'postgres'
+        environment:
+            POSTGRES_PASSWORD: ''
+            POSTGRES_USER: 'postgres'
+            POSTGRES_HOST_AUTH_METHOD: 'trust'
+        volumes:
+        - ./postgres-data:/var/lib/postgresql/data
+        ports:
+        - 7432:5432
+
+    blockscout:
+        depends_on:
+        - db
+        - node_1
+        image: blockscout/blockscout:${DOCKER_TAG:-latest}
+        restart: always
+        container_name: 'blockscout'
+        links:
+        - db:database
+        command: 'mix do ecto.create, ecto.migrate, phx.server'
+        extra_hosts:
+        - 'host.docker.internal:host-gateway'
+        env_file:
+        -  ./envs/common-blockscout.env
+        environment:
+            ETHEREUM_JSONRPC_VARIANT: 'parity'
+            ETHEREUM_JSONRPC_HTTP_URL: http://host.docker.internal:8545/
+            ETHEREUM_JSONRPC_TRACE_URL: http://host.docker.internal:8545/
+            DATABASE_URL: postgresql://postgres:@host.docker.internal:7432/blockscout?ssl=false
+            ECTO_USE_SSL: 'false'
+        ports:
+        - 4000:4000
+#    node_2:
+#        image: nethermind/nethermind:alpine
+#        command: --config config
+#        volumes:
+#            - ./genesis:/config/genesis
+#            - ./node_2/configs/config.cfg:/nethermind/configs/config.cfg
+#            - ./node_2/staticNodes/static-nodes.json:/nethermind/Data/static-nodes.json
+#            - ./node_2/db/aura:/nethermind/nethermind_db/aura
+#            - ./node_2/keystore:/nethermind/keystore
+#        ports:
+#            - 0.0.0.0:8548:8545
+#        networks:
+#            vpcbr:
+#                ipv4_address: 10.5.0.3
+
+#    node_3:
+#        image: nethermind/nethermind:alpine
+#        command: --config config
+#        volumes:
+#            - ./genesis:/config/genesis
+#            - ./node_3/configs/config.cfg:/nethermind/configs/config.cfg
+#            - ./node_3/staticNodes/static-nodes.json:/nethermind/Data/static-nodes.json
+#            - ./node_3/db/aura:/nethermind/nethermind_db/aura
+#            - ./node_3/keystore:/nethermind/keystore
+#        ports:
+#            - 0.0.0.0:8549:8545
+#        networks:
+#            vpcbr:
+#                ipv4_address: 10.5.0.4
+
+networks:
+    vpcbr:
+        driver: bridge
+        ipam:
+            config:
+                - subnet: 11.5.0.0/16
